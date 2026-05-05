@@ -1,0 +1,13 @@
+.env
+.env.*
+backend/.env
+backend/.env.*
+tokens.json
+backend/tokens.json
+**/tokens.json
+*.pem
+*.key
+venv/
+.venv/
+__pycache__/
+*.pyc
