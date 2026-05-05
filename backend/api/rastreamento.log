@@ -1,4 +1,0 @@
-2026-05-05 10:58:59,152 - WARNING - ⚠️ WhatsApp Service indisponível: No module named 'whatsapp_service'
-2026-05-05 10:59:47,479 - INFO - ✅ Scheduler APScheduler de renovação automática iniciado (a cada 15 min).
-2026-05-05 10:59:47,479 - INFO - ✅ Auto-renewer já estava em execução
-2026-05-05 10:59:47,481 - INFO - 🛑 Auto-renewer parado
