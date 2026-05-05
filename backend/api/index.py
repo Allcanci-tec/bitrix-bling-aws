@@ -1238,7 +1238,7 @@ def get_redirect_uri(request_obj=None):
     - Se há request, usa o host atual
     - Senão, usa .env ou default Vercel
     """
-    # Se tem ngrok configurado e está rodando localmente
+    # Se tem ngrok configurado e está rodando localmentedef get_tokens_file_path(): 
     ngrok_url = os.getenv("NGROK_URL", "").strip()
     if ngrok_url:
         return f"{ngrok_url}/callback"
@@ -1252,15 +1252,28 @@ def get_redirect_uri(request_obj=None):
 
 def get_tokens_file_path():
     """Retorna o caminho correto do arquivo de tokens baseado no sistema"""
-    # Em ambiente local (Windows), usar tokens.json na raiz do projeto
+
+    # 1. Se tiver caminho definido no .env, usa ele
+    env_tokens_file = os.getenv("BLING_TOKENS_FILE", "").strip()
+    if env_tokens_file:
+        return env_tokens_file
+
+    # 2. Usa tokens.json dentro da pasta backend
+    backend_tokens = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "tokens.json"
+    )
+    if os.path.exists(backend_tokens):
+        return backend_tokens
+
+    # 3. Usa tokens.json na raiz do projeto, se existir
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    local_tokens = os.path.join(project_root, 'tokens.json')
-    if os.path.exists(local_tokens):
-        return local_tokens
-    # Vercel/Linux
-    if os.path.exists('/tmp'):
-        return '/tmp/tokens.json'
-    return os.path.join(tempfile.gettempdir(), 'bling_tokens.json')
+    project_tokens = os.path.join(project_root, "tokens.json")
+    if os.path.exists(project_tokens):
+        return project_tokens
+
+    # 4. Último fallback
+    return os.path.join(tempfile.gettempdir(), "tokens.json")
 
 TOKENS_FILE = get_tokens_file_path()
 print(f"📁 Arquivo de tokens: {TOKENS_FILE}")
