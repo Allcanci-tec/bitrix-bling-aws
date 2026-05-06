@@ -781,6 +781,18 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
     print(f"[HANDLER] ===== WEBHOOK HANDLER INICIADO (SÍNCRONO) =====")
     print(f"{'='*70}\n")
     sys.stdout.flush()  # ⚠️ FORÇA SAÍDA IMEDIATA
+
+        # Garantir que a URL do Bitrix nunca venha None
+    bitrix_url = (bitrix_url or os.getenv("BITRIX_WEBHOOK_URL", "")).strip()
+
+    if bitrix_url and not bitrix_url.endswith("/"):
+        bitrix_url += "/"
+
+    if not bitrix_url:
+        msg = "BITRIX_WEBHOOK_URL não configurada ou não recebida pelo handler"
+        print(f"[HANDLER] ❌ {msg}")
+        return (False, msg)
+
     
     try:
         # ====================================================================
