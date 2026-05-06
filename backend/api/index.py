@@ -1362,11 +1362,9 @@ MAPA_NOMES_REPRESENTANTES = {
 # ⚠️  CRÍTICO: DEVE SER IDÊNTICO AO VENDEDOR_MAP em backend/webhook_handler.py
 # 🆕 Agora usando cache de nomes ao invés de IDs fixos para representantes não mapeados
 VENDEDOR_MAP = {
-    "1": 15596408666,       # Cleiton de Oliveira Alves
-    "46": 15596468677,      # Bruno Ferman Campolina Silva
-    "408": 15596468785,     # Rennifer/Allison Ney Araújo Lima 
-    "423": 15596718349,     # Nayara Tavares
-    # 436 e novos IDs: usarão NOME do cache, não ID fixo!
+    # Desativado.
+    # Não usar ID fixo para vendedor.
+    # Vendedor será resolvido somente por nome exato no Bling.
 }
 
 # MAPEAMENTO DE PRODUTOS BLING - ESTRUTURA COMPLETA
@@ -2203,94 +2201,39 @@ def buscar_todos_vendedores_bling(access_token):
 
 def encontrar_vendedor_por_nome(nome_responsavel_bitrix, vendedores_bling):
     """
-    Faz FUZZY MATCHING entre o nome do responsável do Bitrix e os vendedores do Bling.
-    
-    ESTRATÉGIA:
-    1. Busca correspondência exata (ignorando capitalização)
-    2. Se não encontrar exato, usa difflib.get_close_matches() para buscar similar
-    3. Retorna o vendedor que mais se parece
-    
-    Args:
-        nome_responsavel_bitrix: String com o nome do Bitrix (ex: "Nayara Tavares")
-        vendedores_bling: Lista de dicts com {id, nome}
-    
-    Retorna:
-        Dict {id, nome} do vendedor encontrado ou None
-    
-    Exemplos:
-        encontrar_vendedor_por_nome("Nayara", [{"id": 123, "nome": "Nayara Tavares"}])
-        -> {"id": 123, "nome": "Nayara Tavares"} ✅
-        
-        encontrar_vendedor_por_nome("Rennifer", [{"id": 456, "nome": "Allison Ney"}])
-        -> {"id": 456, "nome": "Allison Ney"} ✅ (fuzzy match)
+    Busca vendedor SOMENTE por nome exato em uma lista já carregada.
+    Não usa fuzzy, parcial, similaridade ou nome contido.
     """
-    
     if not nome_responsavel_bitrix or not vendedores_bling:
-        print(f"[VENDEDOR-FUZZY] ⚠️ Dados inválidos para fuzzy match")
+        print("[VENDEDOR-EXATO] ⚠️ Dados inválidos para busca exata")
         return None
-    
-    print(f"\n[VENDEDOR-FUZZY] 🎯 INICIANDO FUZZY MATCH")
-    print(f"[VENDEDOR-FUZZY]    Nome do responsável (Bitrix): '{nome_responsavel_bitrix}'")
-    print(f"[VENDEDOR-FUZZY]    Total de vendedores para comparar: {len(vendedores_bling)}")
-    
-    nome_normalizado = nome_responsavel_bitrix.strip().upper()
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # PASSO 1: BUSCA EXATA (sem case-sensitivity)
-    # ════════════════════════════════════════════════════════════════════════
-    print(f"\n[VENDEDOR-FUZZY] 1️⃣ PASSO 1: Buscando correspondência EXATA...")
-    
-    for vendedor in vendedores_bling:
-        vendedor_nome = vendedor.get('nome', '').upper()
-        vendedor_id = vendedor.get('id')
-        
-        # Comparação exata
-        if vendedor_nome == nome_normalizado:
-            print(f"[VENDEDOR-FUZZY] ✅ MATCH EXATO! '{nome_responsavel_bitrix}' = '{vendedor.get('nome')}'")
-            print(f"[VENDEDOR-FUZZY]    Vendedor ID: {vendedor_id}")
-            return vendedor
-        
-        # Comparação parcial (verificar se o nome do Bitrix está CONTIDO no nome do Bling)
-        if nome_normalizado in vendedor_nome or vendedor_nome in nome_normalizado:
-            print(f"[VENDEDOR-FUZZY] ✅ MATCH PARCIAL! '{nome_responsavel_bitrix}' contém/contido em '{vendedor.get('nome')}'")
-            print(f"[VENDEDOR-FUZZY]    Vendedor ID: {vendedor_id}")
-            return vendedor
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # PASSO 2: FUZZY MATCHING (SequenceMatcher)
-    # ════════════════════════════════════════════════════════════════════════
-    print(f"\n[VENDEDOR-FUZZY] 2️⃣ PASSO 2: Buscando correspondência SIMILAR (fuzzy)...")
-    print(f"[VENDEDOR-FUZZY]    Usando difflib.SequenceMatcher para calcular similaridade...")
-    
-    melhor_match = None
-    melhor_score = 0
-    
-    for vendedor in vendedores_bling:
-        vendedor_nome = vendedor.get('nome', '')
-        
-        # Calcular score de similaridade
-        ratio = SequenceMatcher(None, nome_normalizado, vendedor_nome.upper()).ratio()
-        
-        print(f"[VENDEDOR-FUZZY]    • '{nome_responsavel_bitrix}' vs '{vendedor_nome}' = {ratio*100:.1f}%")
-        
-        if ratio > melhor_score:
-            melhor_score = ratio
-            melhor_match = vendedor
-    
-    if melhor_match and melhor_score >= 0.6:  # Threshold de 60%
-        print(f"\n[VENDEDOR-FUZZY] ✅ FUZZY MATCH ENCONTRADO (score: {melhor_score*100:.1f}%)")
-        print(f"[VENDEDOR-FUZZY]    Melhor correspondência: '{melhor_match.get('nome')}'")
-        print(f"[VENDEDOR-FUZZY]    Vendedor ID: {melhor_match.get('id')}")
-        return melhor_match
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # PASSO 3: NENHUM MATCH ENCONTRADO
-    # ════════════════════════════════════════════════════════════════════════
-    print(f"\n[VENDEDOR-FUZZY] ❌ NENHUM MATCH ENCONTRADO!")
-    print(f"[VENDEDOR-FUZZY]    Melhor score obtido: {melhor_score*100:.1f}% (threshold: 60%)")
-    print(f"[VENDEDOR-FUZZY]    Será necessário usar um vendedor padrão ou skippear")
-    return None
 
+    nome_bitrix_original = str(nome_responsavel_bitrix).strip()
+    nome_bitrix_norm = nome_bitrix_original.upper().strip()
+
+    print(f"\n[VENDEDOR-EXATO] 🎯 BUSCA EXATA EM LISTA")
+    print(f"[VENDEDOR-EXATO] Nome Bitrix: '{nome_bitrix_original}'")
+    print(f"[VENDEDOR-EXATO] Total vendedores: {len(vendedores_bling)}")
+
+    for vendedor in vendedores_bling:
+        vendedor_nome = str(vendedor.get('nome', '')).strip()
+        vendedor_id = vendedor.get('id')
+
+        if not vendedor_nome:
+            continue
+
+        vendedor_nome_norm = vendedor_nome.upper().strip()
+
+        if vendedor_nome_norm == nome_bitrix_norm:
+            print(f"[VENDEDOR-EXATO] ✅ MATCH EXATO!")
+            print(f"[VENDEDOR-EXATO]    Bitrix: '{nome_bitrix_original}'")
+            print(f"[VENDEDOR-EXATO]    Bling : '{vendedor_nome}'")
+            print(f"[VENDEDOR-EXATO]    ID: {vendedor_id}")
+            return vendedor
+
+    print(f"[VENDEDOR-EXATO] ⚠️ Nenhum vendedor com nome exato encontrado")
+    print(f"[VENDEDOR-EXATO]    Nome procurado: '{nome_bitrix_original}'")
+    return None
 
 def resolver_vendedor_por_nome_dinamico(access_token, nome_responsavel_bitrix):
     """
@@ -4272,182 +4215,77 @@ def buscar_ou_criar_contato_bling(access_token, empresa_data, vendedor_id=None):
 
 def buscar_vendedor_por_nome_flexivel(access_token, nome_bitrix):
     """
-    Busca vendedor no Bling por nome com FUZZY MATCHING avançado.
+    Busca vendedor no Bling SOMENTE por nome exato.
     
-    ESTRATÉGIAS DE MATCH (em ordem de confiabilidade):
-    1️⃣ EXATO: nome_bitrix == nome_bling
-    2️⃣ CONTIDO: bitrix contido em bling (Sibele Calixto em Sibele Martins Calixto)
-    3️⃣ SUBSTRING: bling contido em bitrix (raro, mas possível)
-    4️⃣ PALAVRAS CHAVE: todas palavras bitrix têm correspodência em bling
-    5️⃣ DISTÂNCIA: Levenshtein distance < 20% (permite "Carlim" → "Santina")
-    6️⃣ INTERSEÇÃO: 80%+ palavras coincidem
-    
-    RESULTADO: Retorna o ID do vendedor mais parecido, ou None se não encontrar.
+    Regra:
+    - Se nome do Bitrix for exatamente igual ao nome do vendedor no Bling, retorna o ID.
+    - Se não for igual, retorna None.
+    - Não usa fuzzy.
+    - Não usa nome contido.
+    - Não usa similaridade.
+    - Não tenta adivinhar vendedor.
     """
     try:
+        if not nome_bitrix or not str(nome_bitrix).strip():
+            print("[VENDEDOR-EXATO] ⚠️ Nome do Bitrix vazio - vendedor será omitido")
+            return None
+
         headers = {"Authorization": f"Bearer {access_token}"}
         url = f"{BLING_API_BASE}/vendedores"
-        
-        print(f"\n[FUZZY-MATCH] {'='*70}")
-        print(f"[FUZZY-MATCH] 🔍 INICIANDO BUSCA COM FUZZY MATCHING")
-        print(f"[FUZZY-MATCH] {'='*70}")
-        print(f"[FUZZY-MATCH] Nome a buscar (Bitrix): '{nome_bitrix}'")
-        
+
+        nome_bitrix_original = str(nome_bitrix).strip()
+        nome_bitrix_norm = nome_bitrix_original.upper().strip()
+
+        print(f"\n[VENDEDOR-EXATO] {'='*70}")
+        print(f"[VENDEDOR-EXATO] 🔍 BUSCA EXATA DE VENDEDOR")
+        print(f"[VENDEDOR-EXATO] Nome recebido do Bitrix: '{nome_bitrix_original}'")
+        print(f"[VENDEDOR-EXATO] Regra: precisa ser exatamente igual ao nome no Bling")
+        print(f"[VENDEDOR-EXATO] {'='*70}")
+
         response = requests.get(url, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            result = response.json()
-            vendedores = result.get('data', [])
-            
-            print(f"[FUZZY-MATCH] 📊 Total de vendedores no Bling: {len(vendedores)}")
-            
-            # Normalizar nome do Bitrix
-            nome_bitrix_norm = nome_bitrix.lower().strip()
-            palavras_bitrix = set(nome_bitrix_norm.split())
-            
-            print(f"[FUZZY-MATCH] 📐 Nome normalizado: '{nome_bitrix_norm}'")
-            print(f"[FUZZY-MATCH] 📝 Palavras-chave: {', '.join(sorted(palavras_bitrix))}")
-            print(f"[FUZZY-MATCH]")
-            
-            # 📊 RASTREAMENTO: Guardar todos os candidatos com scores para debug
-            candidatos = []
-            
-            for idx, vendedor in enumerate(vendedores):
-                contato = vendedor.get('contato', {})
-                nome_bling = contato.get('nome', '').strip()
-                vendedor_id = vendedor.get('id')
-                
-                if not nome_bling or nome_bling.lower() in ['sem nome', '', 'null']:
-                    continue
-                
-                # Normalizar nome do Bling
-                nome_bling_norm = nome_bling.lower().strip()
-                palavras_bling = set(nome_bling_norm.split())
-                
-                print(f"[FUZZY-MATCH] Vendedor #{idx+1}: {vendedor_id} - '{nome_bling}'")
-                
-                # ═════════════════════════════════════════════════════════════════════
-                # ESTRATÉGIA 1: Match exato
-                # ═════════════════════════════════════════════════════════════════════
-                if nome_bitrix_norm == nome_bling_norm:
-                    print(f"[FUZZY-MATCH] ✅ ESTRATÉGIA 1 - MATCH EXATO!")
-                    print(f"[FUZZY-MATCH]    '{nome_bitrix}' == '{nome_bling}'")
-                    print(f"[FUZZY-MATCH] 🎯 RESULTADO: ID {vendedor_id}")
-                    return vendedor_id
-                
-                # ═════════════════════════════════════════════════════════════════════
-                # ESTRATÉGIA 2: Nome Bitrix está contido no Bling
-                # ═════════════════════════════════════════════════════════════════════
-                # Caso: "Sibele Calixto" em "Sibele Martins Calixto"
-                if nome_bitrix_norm in nome_bling_norm:
-                    print(f"[FUZZY-MATCH] ✅ ESTRATÉGIA 2 - BITRIX CONTIDO EM BLING!")
-                    print(f"[FUZZY-MATCH]    '{nome_bitrix}' ⊂ '{nome_bling}'")
-                    candidatos.append((vendedor_id, nome_bling, 95, "contido"))
-                    # NÃO RETORNAR JÁ, DEIXAR PROCURAR MATCH EXATO
-                    continue
-                
-                # ═════════════════════════════════════════════════════════════════════
-                # ESTRATÉGIA 3: Nome Bling está contido no Bitrix (raro)
-                # ═════════════════════════════════════════════════════════════════════
-                if nome_bling_norm in nome_bitrix_norm:
-                    print(f"[FUZZY-MATCH] ✅ ESTRATÉGIA 3 - BLING CONTIDO EM BITRIX!")
-                    print(f"[FUZZY-MATCH]    '{nome_bling}' ⊂ '{nome_bitrix}'")
-                    candidatos.append((vendedor_id, nome_bling, 90, "bling_contido"))
-                    continue
-                
-                # ═════════════════════════════════════════════════════════════════════
-                # ESTRATÉGIA 4: Todas as palavras do Bitrix estão no Bling
-                # ═════════════════════════════════════════════════════════════════════
-                if palavras_bitrix <= palavras_bling:  # Subconjunto
-                    print(f"[FUZZY-MATCH] ✅ ESTRATÉGIA 4 - TODAS PALAVRAS BITRIX ⊆ BLING!")
-                    print(f"[FUZZY-MATCH]    {palavras_bitrix} ⊆ {palavras_bling}")
-                    candidatos.append((vendedor_id, nome_bling, 85, "palavras_subset"))
-                    continue
-                
-                # ═════════════════════════════════════════════════════════════════════
-                # ESTRATÉGIA 5: Distância de Levenshtein (permitir 20% diferença)
-                # ═════════════════════════════════════════════════════════════════════
-                # Usa difflib.SequenceMatcher para similarity
-                from difflib import SequenceMatcher
-                
-                similarity = SequenceMatcher(None, nome_bitrix_norm, nome_bling_norm).ratio()
-                # Converter para percentual de similaridade
-                similaridade_pct = int(similarity * 100)
-                
-                if similaridade_pct >= 80:
-                    print(f"[FUZZY-MATCH] ✅ ESTRATÉGIA 5 - DISTÂNCIA/SIMILARITY!")
-                    print(f"[FUZZY-MATCH]    Similarity: {similaridade_pct}%")
-                    print(f"[FUZZY-MATCH]    '{nome_bitrix}' ~ '{nome_bling}'")
-                    candidatos.append((vendedor_id, nome_bling, similaridade_pct, "similarity"))
-                    continue
-                
-                # ═════════════════════════════════════════════════════════════════════
-                # ESTRATÉGIA 6: Interseção significativa de palavras (60%+)
-                # ═════════════════════════════════════════════════════════════════════
-                if len(palavras_bitrix) > 0 and len(palavras_bling) > 0:
-                    intersecao = len(palavras_bitrix & palavras_bling)
-                    total_palavras = len(palavras_bitrix | palavras_bling)  # União
-                    
-                    if total_palavras > 0:
-                        intersecao_pct = int((intersecao / total_palavras) * 100)
-                    else:
-                        intersecao_pct = 0
-                    
-                    if intersecao_pct >= 60:
-                        print(f"[FUZZY-MATCH] ✅ ESTRATÉGIA 6 - INTERSEÇÃO DE PALAVRAS!")
-                        print(f"[FUZZY-MATCH]    Interseção: {intersecao_pct}% ({intersecao} palavras)")
-                        candidatos.append((vendedor_id, nome_bling, intersecao_pct, "intersecao"))
-                        continue
-                
-                print(f"[FUZZY-MATCH]    ❌ Nenhuma estratégia conseguiu match")
-            
-            # ═════════════════════════════════════════════════════════════════════
-            # SELEÇÃO FINAL: Pegar o melhor candidato se existir
-            # ═════════════════════════════════════════════════════════════════════
-            print(f"[FUZZY-MATCH]")
-            if candidatos:
-                # Ordenar por score (maior primeiro)
-                candidatos_ordenados = sorted(candidatos, key=lambda x: x[2], reverse=True)
-                
-                print(f"[FUZZY-MATCH] 📋 CANDIDATOS ENCONTRADOS (ordenados por score):")
-                for i, (vid, vnome, score, estrategia) in enumerate(candidatos_ordenados, 1):
-                    print(f"[FUZZY-MATCH]    {i}. ID {vid} - '{vnome}' ({score}% - {estrategia})")
-                
-                # PEGAR O MELHOR
-                melhor_id, melhor_nome, melhor_score, estrategia_usada = candidatos_ordenados[0]
-                
-                print(f"[FUZZY-MATCH]")
-                print(f"[FUZZY-MATCH] 🎯 ESCOLHIDO: ID {melhor_id}")
-                print(f"[FUZZY-MATCH]    Nome: '{melhor_nome}'")
-                print(f"[FUZZY-MATCH]    Score: {melhor_score}%")
-                print(f"[FUZZY-MATCH]    Estratégia: {estrategia_usada}")
-                print(f"[FUZZY-MATCH] {'='*70}\n")
-                
-                return melhor_id
-            else:
-                print(f"[FUZZY-MATCH] ❌ Nenhum candidato encontrado!")
-                print(f"[FUZZY-MATCH] 📋 Vendedores disponíveis no Bling:")
-                
-                for idx, vendedor in enumerate(vendedores, 1):
-                    contato = vendedor.get('contato', {})
-                    nome_bling = contato.get('nome', 'SEM NOME').strip()
-                    vendedor_id = vendedor.get('id')
-                    print(f"[FUZZY-MATCH]    {idx}. ID {vendedor_id}: '{nome_bling}'")
-                
-                print(f"[FUZZY-MATCH] {'='*70}\n")
-                return None
-        
-        else:
-            print(f"[FUZZY-MATCH] ⚠️ Erro ao listar vendedores: HTTP {response.status_code}")
-            print(f"[FUZZY-MATCH] Resposta: {response.text[:200]}")
+
+        if response.status_code != 200:
+            print(f"[VENDEDOR-EXATO] ❌ Erro ao listar vendedores: HTTP {response.status_code}")
+            print(f"[VENDEDOR-EXATO] Resposta: {response.text[:300]}")
             return None
-        
+
+        result = response.json()
+        vendedores = result.get('data', [])
+
+        print(f"[VENDEDOR-EXATO] Total de vendedores no Bling: {len(vendedores)}")
+
+        for idx, vendedor in enumerate(vendedores, 1):
+            contato = vendedor.get('contato', {})
+            nome_bling = contato.get('nome', '').strip()
+            vendedor_id = vendedor.get('id')
+
+            if not nome_bling:
+                continue
+
+            nome_bling_norm = nome_bling.upper().strip()
+
+            print(f"[VENDEDOR-EXATO] {idx}. Comparando:")
+            print(f"[VENDEDOR-EXATO]    Bitrix: '{nome_bitrix_original}'")
+            print(f"[VENDEDOR-EXATO]    Bling : '{nome_bling}'")
+
+            if nome_bling_norm == nome_bitrix_norm:
+                print(f"[VENDEDOR-EXATO] ✅ MATCH EXATO ENCONTRADO!")
+                print(f"[VENDEDOR-EXATO]    Nome: '{nome_bling}'")
+                print(f"[VENDEDOR-EXATO]    ID Bling: {vendedor_id}")
+                print(f"[VENDEDOR-EXATO] {'='*70}\n")
+                return vendedor_id
+
+        print(f"[VENDEDOR-EXATO] ⚠️ Nenhum vendedor com nome EXATO encontrado")
+        print(f"[VENDEDOR-EXATO]    Nome procurado: '{nome_bitrix_original}'")
+        print(f"[VENDEDOR-EXATO]    Resultado: contato e pedido serão criados SEM vendedor")
+        print(f"[VENDEDOR-EXATO] {'='*70}\n")
+        return None
+
     except Exception as e:
-        print(f"[FUZZY-MATCH] ❌ Erro na busca fuzzy: {type(e).__name__}: {e}")
+        print(f"[VENDEDOR-EXATO] ❌ Erro na busca exata: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return None
-
 def resolver_vendedor_bling(access_token: str, deal: dict, vendedor_info: dict) -> dict:
     """Resolve o ID E NOME do vendedor no Bling usando mapeamento direto + FUZZY MATCHING.
     

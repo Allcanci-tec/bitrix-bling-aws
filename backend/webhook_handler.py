@@ -44,11 +44,9 @@ MAPA_NOMES_REPRESENTANTES = {
 
 # Mapeamento Bitrix ID → Bling Vendor ID (IDs conhecidos)
 VENDEDOR_MAP_HANDLER = {
-    '1': 15596408666,
-    '46': 15596468677,
-    '408': 15596468785,
-    '423': 15596718349,
-    # 436 e outros: usar nome do cache (sem ID fixo)
+    # Desativado.
+    # Não usar ID fixo para vendedor.
+    # Vendedor será resolvido somente por nome exato no Bling.
 }
 
 # Carregar cache de usuários Bitrix
