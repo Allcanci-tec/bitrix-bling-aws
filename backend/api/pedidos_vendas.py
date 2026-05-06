@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timedelta
 import uuid
 import os
+import time
 
 # Token manager para lazy refresh (auto-renovação)
 try:
@@ -18,6 +19,42 @@ except ImportError:
 
 BLING_API_BASE = "https://www.bling.com.br/Api/v3"
 
+def fazer_requisicao_bling_com_retry(metodo, url, headers, json_data=None, params=None, timeout=30, max_tentativas=3):
+    """
+    Faz requisição ao Bling respeitando rate limit.
+    Se receber HTTP 429, espera e tenta novamente.
+    """
+    esperas = [2, 4, 6]
+
+    for tentativa in range(1, max_tentativas + 1):
+        if tentativa > 1:
+            espera = esperas[tentativa - 2]
+            print(f"[BLING-RATE-LIMIT] Aguardando {espera}s antes da tentativa {tentativa}/{max_tentativas}...")
+            time.sleep(espera)
+
+        if metodo.upper() == "POST":
+            response = requests.post(
+                url,
+                headers=headers,
+                json=json_data,
+                timeout=timeout
+            )
+        elif metodo.upper() == "GET":
+            response = requests.get(
+                url,
+                headers=headers,
+                params=params,
+                timeout=timeout
+            )
+        else:
+            raise ValueError(f"Método HTTP inválido: {metodo}")
+
+        if response.status_code != 429:
+            return response
+
+        print(f"[BLING-RATE-LIMIT] HTTP 429 recebido na tentativa {tentativa}/{max_tentativas}")
+
+    return response
 def criar_pedido_venda_bling(access_token, payload):
     """
     Cria um pedido de venda no Bling via API v3
@@ -81,11 +118,14 @@ def criar_pedido_venda_bling(access_token, payload):
         print(json.dumps(payload, indent=2, ensure_ascii=False, default=str))
         
         # Fazer requisição POST
-        response = requests.post(
-            f"{BLING_API_BASE}/pedidos/vendas",
+                # Fazer requisição POST com retry para HTTP 429
+        response = fazer_requisicao_bling_com_retry(
+            metodo="POST",
+            url=f"{BLING_API_BASE}/pedidos/vendas",
             headers=headers,
-            json=payload,
-            timeout=30
+            json_data=payload,
+            timeout=30,
+            max_tentativas=3
         )
         
         print(f"\n[PEDIDO-VENDA] Status da resposta: {response.status_code}")
@@ -110,12 +150,14 @@ def criar_pedido_venda_bling(access_token, payload):
                             # Atualizar headers com novo token
                             headers["Authorization"] = f"Bearer {new_token}"
                             
-                            # RETRY: Fazer requisição novamente
-                            response = requests.post(
-                                f"{BLING_API_BASE}/pedidos/vendas",
+                            # RETRY: Fazer requisição novamente com proteção contra HTTP 429
+                            response = fazer_requisicao_bling_com_retry(
+                                metodo="POST",
+                                url=f"{BLING_API_BASE}/pedidos/vendas",
                                 headers=headers,
-                                json=payload,
-                                timeout=30
+                                json_data=payload,
+                                timeout=30,
+                                max_tentativas=3
                             )
                             
                             print(f"[PEDIDO-VENDA] ✅ Retry status: {response.status_code}")

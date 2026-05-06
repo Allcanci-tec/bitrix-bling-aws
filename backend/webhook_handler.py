@@ -12,7 +12,7 @@ import unicodedata
 from pathlib import Path
 from datetime import datetime, timedelta
 import requests
-
+import time
 # Importar token manager para renovação automática
 try:
     from backend.bling_token_manager import get_valid_bling_token, make_bling_request_with_auto_refresh
@@ -507,6 +507,9 @@ FONTE_ITEM_FIXO = {
     "valor": 0.0
 }
 
+# Cache simples em memória para evitar várias consultas repetidas ao Bling
+PRODUTO_ID_CACHE = {}
+
 def _get_codigo_bling_para_produto(nome_produto):
     """
     Retorna (código_bling, nome_exato_bling) para um produto do Bitrix
@@ -659,76 +662,109 @@ def save_processed_deal(deal_id):
 
 def buscar_produto_bling_por_codigo_webhook(access_token, codigo_produto):
     """
-    🔍 BUSCA PRODUTO NO BLING PELA API v3
-    
-    Tenta 2 métodos:
-    1. Busca com 'pesquisa' parameter
-    2. Busca com 'codigos[]' array
-    
-    Retorna: ID interno do Bling ou None se não encontrado
+    Busca produto no Bling pelo código com:
+    - cache em memória
+    - pausa entre requisições
+    - retry em HTTP 429
     """
     if not access_token or access_token == "FALLBACK_TOKEN":
         print(f"[PRODUTO] ⚠️ Token inválido - não buscando produto {codigo_produto}")
         return None
-    
+
+    codigo_chave = str(codigo_produto).strip().upper()
+
+    if codigo_chave in PRODUTO_ID_CACHE:
+        product_id = PRODUTO_ID_CACHE[codigo_chave]
+        print(f"[PRODUTO-CACHE] HIT: {codigo_chave} → ID {product_id}")
+        return product_id
+
+    print(f"[PRODUTO-CACHE] MISS: {codigo_chave} - buscando no Bling...")
+
+    BLING_API_BASE = "https://www.bling.com.br/Api/v3"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{BLING_API_BASE}/produtos"
+
+    def get_com_retry(params, descricao_busca):
+        esperas = [2, 4, 6]
+
+        for tentativa in range(1, 4):
+            if tentativa > 1:
+                espera = esperas[tentativa - 2]
+                print(f"[BLING-RATE-LIMIT] Produto {codigo_chave}: aguardando {espera}s antes da tentativa {tentativa}/3...")
+                time.sleep(espera)
+            else:
+                # pausa curta para respeitar limite de 3 req/s
+                time.sleep(0.4)
+
+            response = requests.get(url, headers=headers, params=params, timeout=15)
+
+            if response.status_code == 429:
+                print(f"[BLING-RATE-LIMIT] HTTP 429 ao buscar produto {codigo_chave} ({descricao_busca}) tentativa {tentativa}/3")
+                continue
+
+            return response
+
+        return response
+
     try:
-        BLING_API_BASE = "https://www.bling.com.br/Api/v3"
-        headers = {"Authorization": f"Bearer {access_token}"}
-        url = f"{BLING_API_BASE}/produtos"
-        
-        # 🔍 MÉTODO 1: Buscar com 'pesquisa'
-        for tipo in ["P", "S"]:  # P=Produto, S=Serviço
+        # MÉTODO 1: Buscar com 'pesquisa'
+        for tipo in ["P", "S"]:
             params = {
-                "pesquisa": codigo_produto,
+                "pesquisa": codigo_chave,
                 "criterio": 2,
                 "tipo": tipo,
                 "limite": 20
             }
-            
-            try:
-                response = requests.get(url, headers=headers, params=params, timeout=15)
-                if response.status_code == 200:
-                    result = response.json()
-                    produtos = result.get('data', [])
-                    
-                    for produto in produtos:
-                        if produto.get('codigo', '').upper() == codigo_produto.upper():
-                            product_id = produto.get('id')
-                            print(f"[PRODUTO] ✅ Encontrado: {codigo_produto} → ID {product_id}")
-                            return product_id
-            except:
-                pass
-        
-        # 🔍 MÉTODO 2: Buscar com 'codigos[]'
+
+            response = get_com_retry(params, f"pesquisa/tipo={tipo}")
+
+            if response.status_code == 200:
+                result = response.json()
+                produtos = result.get('data', [])
+
+                for produto in produtos:
+                    if str(produto.get('codigo', '')).upper() == codigo_chave:
+                        product_id = produto.get('id')
+                        PRODUTO_ID_CACHE[codigo_chave] = product_id
+                        print(f"[PRODUTO] ✅ Encontrado: {codigo_chave} → ID {product_id}")
+                        return product_id
+
+            elif response.status_code == 429:
+                print(f"[PRODUTO] ❌ Rate limit persistente ao buscar {codigo_chave}")
+                return None
+
+        # MÉTODO 2: Buscar com 'codigos[]'
         for tipo in ["P", "S"]:
             params = {
-                "codigos[]": codigo_produto,
+                "codigos[]": codigo_chave,
                 "criterio": 2,
                 "tipo": tipo,
                 "limite": 10
             }
-            
-            try:
-                response = requests.get(url, headers=headers, params=params, timeout=15)
-                if response.status_code == 200:
-                    result = response.json()
-                    produtos = result.get('data', [])
-                    
-                    for produto in produtos:
-                        if produto.get('codigo', '').upper() == codigo_produto.upper():
-                            product_id = produto.get('id')
-                            print(f"[PRODUTO] ✅ Encontrado: {codigo_produto} → ID {product_id}")
-                            return product_id
-            except:
-                pass
-        
-        print(f"[PRODUTO] ❌ NÃO ENCONTRADO: {codigo_produto}")
-        return None
-        
-    except Exception as e:
-        print(f"[PRODUTO] ❌ Erro ao buscar: {e}")
+
+            response = get_com_retry(params, f"codigos/tipo={tipo}")
+
+            if response.status_code == 200:
+                result = response.json()
+                produtos = result.get('data', [])
+
+                for produto in produtos:
+                    if str(produto.get('codigo', '')).upper() == codigo_chave:
+                        product_id = produto.get('id')
+                        PRODUTO_ID_CACHE[codigo_chave] = product_id
+                        print(f"[PRODUTO] ✅ Encontrado: {codigo_chave} → ID {product_id}")
+                        return product_id
+
+            elif response.status_code == 429:
+                print(f"[PRODUTO] ❌ Rate limit persistente ao buscar {codigo_chave}")
+                return None
+
+        print(f"[PRODUTO] ❌ NÃO ENCONTRADO: {codigo_chave}")
         return None
 
+    except Exception as e:
+        print(f"[PRODUTO] ❌ Erro ao buscar {codigo_chave}: {e}")
+        return None
 
 def is_deal_processed(deal_id):
     """Verifica se deal já foi processada - DEDUPLICAÇÃO ATIVADA
