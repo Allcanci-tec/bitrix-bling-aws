@@ -782,7 +782,7 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
     print(f"{'='*70}\n")
     sys.stdout.flush()  # ⚠️ FORÇA SAÍDA IMEDIATA
 
-        # Garantir que a URL do Bitrix nunca venha None
+    # Garantir que a URL do Bitrix nunca venha None
     bitrix_url = (bitrix_url or os.getenv("BITRIX_WEBHOOK_URL", "")).strip()
 
     if bitrix_url and not bitrix_url.endswith("/"):
@@ -824,8 +824,7 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
         
         # ⚠️ LOG EXPLÍCITO DO STAGE RECEBIDO (IMPORTANTE PARA DEBUG)
         print(f"[HANDLER] 🔍 STAGE RECEBIDO DO BITRIX: '{stage_id}' (tipo: {type(stage_id).__name__})")
-        
-        # ⚠️ SE O STAGE VEIO VAZIO, BUSCAR DA API DO BITRIX
+    
         if not stage_id or stage_id == '':
             print(f"[HANDLER] ⚠️ STAGE VAZIO NO WEBHOOK! Buscando da API do Bitrix...")
             try:
@@ -844,14 +843,21 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
                     deal_data = resp_deal.json().get('result', {})
                     stage_id = deal_data.get('STAGE_ID', '').upper()
                     deal_title = deal_data.get('TITLE', deal_title)
+
+                    moved_time_raw = deal_data.get('MOVED_TIME') or deal_data.get('DATE_MODIFY') or ''
                     print(f"[HANDLER] ✅ Stage obtido via API: '{stage_id}'")
+                    print(f"[HANDLER] 🕒 MOVED_TIME/DATE_MODIFY da deal: {repr(moved_time_raw)}")
                 else:
                     print(f"[HANDLER] ⚠️ Erro ao buscar dados da deal: HTTP {resp_deal.status_code}")
                     stage_id = ''
+                    deal_data = {}
+                    moved_time_raw = ''
                     
             except Exception as e:
                 print(f"[HANDLER] ❌ Erro ao buscar stage via API: {e}")
                 stage_id = ''
+                deal_data = {}
+                moved_time_raw = ''
         
         # 🔐 Validação RIGOROSA: APENAS estágio de conclusão (WON)
         # Stages que indicam deal concluída/ganha no Bitrix
@@ -870,6 +876,48 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
             return (False, f"Stage inválido: {stage_id}")
         
         print(f"[HANDLER] ✅ Stage '{stage_id}' é válido para processamento")
+
+                # ====================================================================
+        # 1.1 TRAVA: PROCESSAR SOMENTE SE CAIU EM WON AGORA
+        # ====================================================================
+        try:
+            moved_time_raw = ''
+            if 'deal_data' in locals() and isinstance(deal_data, dict):
+                moved_time_raw = deal_data.get('MOVED_TIME') or deal_data.get('DATE_MODIFY') or ''
+
+            if moved_time_raw:
+                moved_time_str = str(moved_time_raw).replace('Z', '+00:00')
+
+                try:
+                    moved_dt = datetime.fromisoformat(moved_time_str)
+                except ValueError:
+                    moved_dt = None
+
+                if moved_dt:
+                    now_dt = datetime.now(moved_dt.tzinfo) if moved_dt.tzinfo else datetime.now()
+                    diff_seconds = abs((now_dt - moved_dt).total_seconds())
+
+                    print(f"[HANDLER] 🕒 Validação de entrada em WON:")
+                    print(f"[HANDLER]    MOVED_TIME/DATE_MODIFY: {moved_time_raw}")
+                    print(f"[HANDLER]    Diferença em segundos: {diff_seconds:.0f}")
+
+                    if diff_seconds > 300:
+                        msg = (
+                            f"Deal #{deal_id} já estava em Concluído antes "
+                            f"(MOVED_TIME/DATE_MODIFY: {moved_time_raw}). Ignorando."
+                        )
+                        print(f"[HANDLER] ⏭️ {msg}")
+                        return (False, msg)
+                    else:
+                        print(f"[HANDLER] ✅ Deal entrou/foi atualizada recentemente em WON - permitido processar")
+                else:
+                    print(f"[HANDLER] ⚠️ Não foi possível interpretar MOVED_TIME/DATE_MODIFY. Continuando.")
+            else:
+                print(f"[HANDLER] ⚠️ MOVED_TIME/DATE_MODIFY não encontrado. Continuando.")
+
+        except Exception as e:
+            print(f"[HANDLER] ⚠️ Erro na validação de MOVED_TIME/DATE_MODIFY: {e}")
+            print(f"[HANDLER] ⚠️ Continuando.")
         
         # ====================================================================
         # 1.5 VERIFICAR DEDUPLICAÇÃO (evitar processar mesma deal 2x)
