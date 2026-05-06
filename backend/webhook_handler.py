@@ -1268,12 +1268,25 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
                 if not nome_vendedor:
                     print(f"[HANDLER] ❌ [3/4] API Bitrix também não retornou nome para ID {bitrix_assigned_id}")
 
-            # Passo 4: Resolver ID Bling pelo mapa direto (se existir)
-            if bitrix_assigned_id and bitrix_assigned_id in VENDEDOR_MAP_HANDLER:
-                vendedor_bling_id = VENDEDOR_MAP_HANDLER[bitrix_assigned_id]
-                print(f"[HANDLER] ✅ [4/4] ID Bling mapeado diretamente: {vendedor_bling_id}")
+            # Passo 4: NÃO usar ID fixo como decisão final.
+            # O vendedor deve ser resolvido pelo NOME no Bling.
+            # Se o nome não existir no Bling, vendedor_bling_id fica None.
+            vendedor_bling_id = None
+
+            if nome_vendedor:
+                print(f"[HANDLER] 🔍 [4/4] Buscando vendedor no Bling pelo nome: '{nome_vendedor}'")
+                vendedor_bling_id = buscar_vendedor_por_nome_flexivel(bling_token, nome_vendedor)
+
+                if vendedor_bling_id:
+                    print(f"[HANDLER] ✅ Vendedor encontrado no Bling:")
+                    print(f"[HANDLER]    Nome Bitrix: '{nome_vendedor}'")
+                    print(f"[HANDLER]    ID Bling: {vendedor_bling_id}")
+                else:
+                    print(f"[HANDLER] ⚠️ Vendedor NÃO encontrado no Bling:")
+                    print(f"[HANDLER]    Nome Bitrix: '{nome_vendedor}'")
+                    print(f"[HANDLER]    Contato e pedido serão criados SEM vendedor")
             else:
-                print(f"[HANDLER] ℹ️ [4/4] ID Bitrix {bitrix_assigned_id} não tem ID fixo no Bling - usará fuzzy match pelo nome: '{nome_vendedor}'")
+                print(f"[HANDLER] ⚠️ Nome do vendedor vazio - contato e pedido serão criados SEM vendedor")
 
             print(f"[HANDLER]    Resultado: nome='{nome_vendedor}', bling_id={vendedor_bling_id}")
             print(f"[HANDLER] === FIM RESOLUÇÃO ===")
@@ -1297,10 +1310,12 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
             
             # Chamar função de criação/busca de contato
             # ⚠️ CRÍTICO: Passar vendedor_nome E vendedor_id para garantir que ambos são usados no Bling
+            vendedor_nome_para_contato = nome_vendedor if vendedor_bling_id else None
+
             contato_result, contato_error = criar_contato_bling(
                 bling_token,
                 empresa_data,
-                vendedor_nome=nome_vendedor,
+                vendedor_nome=vendedor_nome_para_contato,
                 vendedor_id=vendedor_bling_id
             )
 
@@ -1443,18 +1458,15 @@ def processar_webhook_bitrix(payload, bitrix_url, bling_endpoint_url):
             # Calcular valor total dos itens
             valor_total = 0.0
             for item in itens:
-                # Se não tem valor no item, tenta pegar do montante
-                # Caso contrário usa 0 (Bling completa)
+            # Se não tem valor no item, tenta pegar do montante
+            # Caso contrário usa 0 (Bling completa)
                 valor_total += item.get('valor', 0.0)
             
-            # Resolver ID Bling pelo nome se ainda não tiver (ex: Tarik não está no mapa)
-            if not vendedor_bling_id and nome_vendedor:
-                print(f"[HANDLER]    🔍 Buscando ID Bling para '{nome_vendedor}'...")
-                vendedor_bling_id = buscar_vendedor_por_nome_flexivel(bling_token, nome_vendedor)
-                if vendedor_bling_id:
-                    print(f"[HANDLER]    ✅ ID Bling encontrado por nome: {vendedor_bling_id}")
-                else:
-                    print(f"[HANDLER]    ℹ️ Vendedor '{nome_vendedor}' não encontrado no Bling - pedido sem vendedor")
+            # Não tentar resolver vendedor novamente aqui.
+            # O vendedor já foi decidido na etapa de resolução.
+            # Se vendedor_bling_id estiver vazio, o pedido será criado sem vendedor.
+            if not vendedor_bling_id:
+                print(f"[HANDLER]    ℹ️ Vendedor não resolvido anteriormente - pedido será criado SEM vendedor")
 
             # Montar o payload COMPLETO com todos os campos que o Bling espera
             # ⚠️  CRÍTICO: Incluir "vendedor" com o ID resolvido do Bling
